@@ -73,6 +73,34 @@ Midline also includes [`scripts/backup.sh`](./scripts/backup.sh), which takes a 
    0 2 * * * RCLONE_REMOTE="gdrive:MidlineBackup" /path/to/midline-journal/scripts/backup.sh
    ```
 
+### Restoring from a Backup
+Midline includes [`scripts/restore.sh`](./scripts/restore.sh) to safely restore your database and photos from either `rclone` (Google Drive, etc.) or a local backup folder. It verifies SQLite integrity before swapping files, saves a timestamped safety copy of your current `./data` directory, and clears stale WAL files automatically.
+
+1. **Stop Midline first** (never overwrite a live SQLite database while the server is running):
+   ```bash
+   # Docker:
+   docker compose down
+   # Or systemd user service:
+   systemctl --user stop midline
+   ```
+2. **Run the restore script:**
+   ```bash
+   # From rclone / Google Drive:
+   RCLONE_REMOTE="gdrive:MidlineBackup" ./scripts/restore.sh
+
+   # Or from a local backup folder:
+   ./scripts/restore.sh --from /path/to/backup-folder
+   ```
+3. **Start Midline again:**
+   ```bash
+   # Docker:
+   docker compose up -d
+   # Or systemd user service:
+   systemctl --user start midline
+   ```
+
+*(Manual restore without the script: stop Midline, remove any `midline.db-wal` and `midline.db-shm` files in `./data`, copy your backed-up `midline.db` and `uploads/` folder into `./data`, then start Midline again. Missing thumbnails in `thumbs/` are handled automatically by falling back to the original photos.)*
+
 ### Enabling Phone Passkeys (Face ID / Touch ID / Fingerprint)
 Browsers require **HTTPS + a hostname** to use Passkeys outside `localhost`. Two easy ways to enable HTTPS for your self-hosted instance:
 
