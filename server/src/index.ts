@@ -1,6 +1,7 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
+import multer from 'multer';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +9,10 @@ import { initDb, DATA_DIR } from './db.js';
 import { requireAuth } from './auth.js';
 import authRoutes from './routes/auth.js';
 import entriesRoutes from './routes/entries.js';
-import photosRoutes from './routes/photos.js';
+import photosRoutes, {
+  MAX_PHOTOS_PER_ENTRY,
+  MAX_PHOTO_SIZE_MB,
+} from './routes/photos.js';
 import promptsRoutes from './routes/prompts.js';
 
 initDb();
@@ -58,6 +62,20 @@ app.use(
     _next: express.NextFunction
   ) => {
     console.error('Server error:', err);
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+        res.status(400).json({
+          error: `You can attach up to ${MAX_PHOTOS_PER_ENTRY} photos per entry.`,
+        });
+        return;
+      }
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        res.status(400).json({
+          error: `Each photo must be ${MAX_PHOTO_SIZE_MB} MB or smaller.`,
+        });
+        return;
+      }
+    }
     res.status(400).json({ error: err.message || 'Something went wrong.' });
   }
 );

@@ -20,9 +20,12 @@ const storage = multer.diskStorage({
   },
 });
 
+export const MAX_PHOTOS_PER_ENTRY = 10;
+export const MAX_PHOTO_SIZE_MB = 15;
+
 const upload = multer({
   storage,
-  limits: { fileSize: 15 * 1024 * 1024, files: 10 },
+  limits: { fileSize: MAX_PHOTO_SIZE_MB * 1024 * 1024, files: MAX_PHOTOS_PER_ENTRY },
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
       cb(null, true);
@@ -32,18 +35,48 @@ const upload = multer({
   },
 });
 
+function cleanupUploadedFiles(files: Express.Multer.File[]) {
+  for (const file of files) {
+    try {
+      fs.unlinkSync(file.path);
+    } catch {
+      // ignore
+    }
+  }
+}
+
 // POST /api/photos/entry/:entryId
-router.post('/entry/:entryId', upload.array('photos', 10), async (req, res) => {
+router.post('/entry/:entryId', upload.array('photos', MAX_PHOTOS_PER_ENTRY), async (req, res) => {
   const { entryId } = req.params;
+  const files = (req.files as Express.Multer.File[]) || [];
+
   const entry = db.prepare('SELECT id FROM entries WHERE id = ?').get(entryId);
   if (!entry) {
+    cleanupUploadedFiles(files);
     res.status(404).json({ error: 'Entry not found.' });
     return;
   }
 
-  const files = (req.files as Express.Multer.File[]) || [];
   if (files.length === 0) {
     res.status(400).json({ error: 'No photos uploaded.' });
+    return;
+  }
+
+  const existingCountRow = db
+    .prepare('SELECT COUNT(*) as c FROM photos WHERE entry_id = ?')
+    .get(entryId) as { c: number };
+
+  if (existingCountRow.c + files.length > MAX_PHOTOS_PER_ENTRY) {
+    cleanupUploadedFiles(files);
+    const remaining = Math.max(0, MAX_PHOTOS_PER_ENTRY - existingCountRow.c);
+    res.status(400).json({
+      error:
+        remaining === 0
+          ? `This entry already has the maximum of ${MAX_PHOTOS_PER_ENTRY} photos.`
+          : `You can attach up to ${MAX_PHOTOS_PER_ENTRY} photos per entry (${remaining} slot${
+              remaining === 1 ? '' : 's'
+            } remaining).`,
+    });
     return;
   }
 

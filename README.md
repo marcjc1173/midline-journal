@@ -32,7 +32,7 @@ Most journaling apps are either cloud subscriptions, generic blank pages, or fil
 
 ## Features
 
-- **Daily Writing & Photos**: Exact date and time tracking (including backdating and multiple entries per day), direct mobile camera capture (**Take Photo**), drag-and-drop uploads with automatic thumbnails and full-screen lightbox.
+- **Daily Writing & Photos**: Exact date and time tracking (including backdating and multiple entries per day), direct mobile camera capture (**Take Photo**), drag-and-drop uploads (up to **10 photos per entry**, 15 MB max per photo) with automatic thumbnails and full-screen lightbox.
 - **Question of the Day**: Consistent daily reflection prompt across 7 grounded themes (*Carrying Weight*, *Next Chapter*, *Health & Energy*, *Relationships*, *Perspective*, *Small Wins*, *Values & Legacy*), with one-click shuffle and custom prompt management.
 - **Back on This Day**: Automatically surfaces entries from the same date in previous years (plus a one-month throwback while your journal is new) so you can see how far you've come.
 - **Calendar View**: Monthly calendar where days with entries stand out visually with mood and photo indicators. Click any day to read or add entries.

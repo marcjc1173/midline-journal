@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  AlertCircle,
   Calendar,
   Camera,
   Clock,
@@ -15,6 +16,8 @@ import { api } from '../api';
 import {
   getNowHm,
   getTodayYmd,
+  MAX_PHOTO_SIZE_MB,
+  MAX_PHOTOS_PER_ENTRY,
   MOODS,
   type Entry,
   type Photo,
@@ -120,11 +123,20 @@ export function EntryEditor({
     initialEntry?.photos || []
   );
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [photoNotice, setPhotoNotice] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  const totalPhotos = existingPhotos.length + pendingFiles.length;
+  const atPhotoLimit = totalPhotos >= MAX_PHOTOS_PER_ENTRY;
+  const activePhotoAlert =
+    photoNotice ||
+    (atPhotoLimit
+      ? `Photo limit reached (${MAX_PHOTOS_PER_ENTRY}/${MAX_PHOTOS_PER_ENTRY}). You can attach up to ${MAX_PHOTOS_PER_ENTRY} photos per entry.`
+      : '');
 
   // Auto-save draft to localStorage so Auto-Lock or accidental refresh never loses writing
   useEffect(() => {
@@ -191,12 +203,44 @@ export function EntryEditor({
 
   const handleFilesSelected = (fileList: FileList | null) => {
     if (!fileList) return;
-    const added: PendingFile[] = [];
-    for (const file of Array.from(fileList)) {
-      if (!file.type.startsWith('image/')) continue;
-      added.push({ file, previewUrl: URL.createObjectURL(file) });
+    const imageFiles = Array.from(fileList).filter((file) =>
+      file.type.startsWith('image/')
+    );
+    if (imageFiles.length === 0) return;
+
+    const currentTotal = existingPhotos.length + pendingFiles.length;
+    const remaining = Math.max(0, MAX_PHOTOS_PER_ENTRY - currentTotal);
+
+    if (remaining === 0) {
+      setPhotoNotice(
+        `Photo limit reached (${MAX_PHOTOS_PER_ENTRY}/${MAX_PHOTOS_PER_ENTRY}). Remove a photo to add another.`
+      );
+      return;
     }
+
+    const accepted = imageFiles.slice(0, remaining);
+    const skipped = imageFiles.length - accepted.length;
+    const added: PendingFile[] = accepted.map((file) => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }));
+
     setPendingFiles((prev) => [...prev, ...added]);
+
+    const newTotal = currentTotal + added.length;
+    if (skipped > 0) {
+      setPhotoNotice(
+        `Photo limit reached (${MAX_PHOTOS_PER_ENTRY}/${MAX_PHOTOS_PER_ENTRY}). Entries can have up to ${MAX_PHOTOS_PER_ENTRY} photos — ${skipped} extra photo${
+          skipped === 1 ? '' : 's'
+        } ${skipped === 1 ? 'was' : 'were'} not added.`
+      );
+    } else if (newTotal >= MAX_PHOTOS_PER_ENTRY) {
+      setPhotoNotice(
+        `Photo limit reached (${MAX_PHOTOS_PER_ENTRY}/${MAX_PHOTOS_PER_ENTRY}). You can attach up to ${MAX_PHOTOS_PER_ENTRY} photos per entry.`
+      );
+    } else {
+      setPhotoNotice('');
+    }
   };
 
   const removePendingFile = (idx: number) => {
@@ -205,12 +249,14 @@ export function EntryEditor({
       if (target) URL.revokeObjectURL(target.previewUrl);
       return prev.filter((_, i) => i !== idx);
     });
+    setPhotoNotice('');
   };
 
   const deleteExistingPhoto = async (photoId: string) => {
     try {
       await api.deletePhoto(photoId);
       setExistingPhotos((prev) => prev.filter((p) => p.id !== photoId));
+      setPhotoNotice('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove photo');
     }
@@ -573,8 +619,14 @@ export function EntryEditor({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              disabled={atPhotoLimit}
               onClick={() => cameraInputRef.current?.click()}
-              className="inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-xs font-medium transition hover:opacity-85"
+              title={
+                atPhotoLimit
+                  ? `Maximum of ${MAX_PHOTOS_PER_ENTRY} photos per entry reached`
+                  : undefined
+              }
+              className="inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-xs font-medium transition hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-50"
               style={{
                 borderColor: 'var(--border)',
                 backgroundColor: 'var(--bg-subtle)',
@@ -587,20 +639,49 @@ export function EntryEditor({
 
             <button
               type="button"
+              disabled={atPhotoLimit}
               onClick={() => fileInputRef.current?.click()}
-              className={`inline-flex items-center gap-2 rounded-lg border border-dashed px-3.5 py-2 text-xs font-medium transition ${
-                isDragging ? 'scale-[1.01]' : ''
+              title={
+                atPhotoLimit
+                  ? `Maximum of ${MAX_PHOTOS_PER_ENTRY} photos per entry reached`
+                  : undefined
+              }
+              className={`inline-flex items-center gap-2 rounded-lg border border-dashed px-3.5 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                isDragging && !atPhotoLimit ? 'scale-[1.01]' : ''
               }`}
               style={{
-                borderColor: isDragging ? 'var(--accent)' : 'var(--border)',
+                borderColor: isDragging && !atPhotoLimit ? 'var(--accent)' : 'var(--border)',
                 color: 'var(--text-muted)',
-                backgroundColor: isDragging ? 'var(--accent-soft)' : 'transparent',
+                backgroundColor:
+                  isDragging && !atPhotoLimit ? 'var(--accent-soft)' : 'transparent',
               }}
             >
               <ImagePlus className="h-4 w-4" style={{ color: 'var(--accent)' }} />
               Choose Photos
             </button>
+
+            <span
+              className="text-xs"
+              style={{ color: atPhotoLimit ? 'var(--accent)' : 'var(--text-muted)' }}
+            >
+              {totalPhotos}/{MAX_PHOTOS_PER_ENTRY} photos (max {MAX_PHOTO_SIZE_MB} MB each)
+            </span>
           </div>
+
+          {activePhotoAlert && (
+            <div
+              role="alert"
+              className="mt-2.5 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs font-medium"
+              style={{
+                backgroundColor: 'var(--accent-soft)',
+                borderColor: 'var(--accent)',
+                color: 'var(--accent)',
+              }}
+            >
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{activePhotoAlert}</span>
+            </div>
+          )}
         </div>
       </div>
 

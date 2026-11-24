@@ -1,3 +1,6 @@
+export const MAX_PHOTOS_PER_ENTRY = 10;
+export const MAX_PHOTO_SIZE_MB = 15;
+
 export interface Photo {
   id: string;
   entry_id: string;
