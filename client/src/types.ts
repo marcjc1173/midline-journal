@@ -88,6 +88,32 @@ export interface RestoreResult {
   requiresUnlock: boolean;
 }
 
+export type BackupSchedule = 'off' | 'daily' | 'weekly';
+
+export interface GDriveConfig {
+  clientId: string;
+  hasClientSecret: boolean;
+  folderName: string;
+  hasEncryptionPassphrase: boolean;
+  connected: boolean;
+  accountEmail: string;
+  schedule: BackupSchedule;
+  retentionCount: number;
+  lastBackupAt: string | null;
+  lastBackupFile: string | null;
+  lastBackupSize: number | null;
+  lastBackupError: string | null;
+  redirectUri: string;
+}
+
+export interface GDriveBackupItem {
+  id: string;
+  name: string;
+  size: number;
+  createdTime: string;
+  encrypted: boolean;
+}
+
 export const MOODS = [
   { id: 'good', label: 'Good', color: '#4f9d69' },
   { id: 'steady', label: 'Steady', color: '#6b9ac4' },

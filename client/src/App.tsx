@@ -12,9 +12,20 @@ import { SettingsPage } from './pages/SettingsPage';
 import { InstallPwaPrompt } from './components/InstallPwaPrompt';
 import type { Prompt } from './types';
 
+function getInitialTab(): NavTab {
+  if (
+    window.location.pathname === '/settings' ||
+    window.location.search.includes('gdrive=') ||
+    window.location.search.includes('gdrive_error=')
+  ) {
+    return 'settings';
+  }
+  return 'today';
+}
+
 function AppShell() {
   const { status, loading } = useAuth();
-  const [activeTab, setActiveTab] = useState<NavTab>('today');
+  const [activeTab, setActiveTab] = useState<NavTab>(getInitialTab);
   const [pendingPrompt, setPendingPrompt] = useState<Prompt | null>(null);
   const [pendingTag, setPendingTag] = useState('');
 

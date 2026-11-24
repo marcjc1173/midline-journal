@@ -14,7 +14,8 @@ import {
   Trash2,
   Upload,
 } from 'lucide-react';
-import { api } from '../api';
+import { ApiError, api } from '../api';
+import { GoogleDriveSyncCard } from '../components/GoogleDriveSyncCard';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import type { BackupInfo, PasskeyItem } from '../types';
@@ -58,7 +59,12 @@ export function SettingsPage() {
   const [pwErr, setPwErr] = useState('');
 
   const [backupInfo, setBackupInfo] = useState<BackupInfo | null>(null);
+  const [encryptDownload, setEncryptDownload] = useState(false);
+  const [downloadPassphrase, setDownloadPassphrase] = useState('');
+  const [downloadingBackup, setDownloadingBackup] = useState(false);
   const [selectedBackupFile, setSelectedBackupFile] = useState<File | null>(null);
+  const [restorePassphrase, setRestorePassphrase] = useState('');
+  const [needsRestorePassphrase, setNeedsRestorePassphrase] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [backupMsg, setBackupMsg] = useState('');
   const [backupErr, setBackupErr] = useState('');
@@ -151,15 +157,43 @@ export function SettingsPage() {
     }
   };
 
+  const handleDownloadBackup = async () => {
+    setBackupMsg('');
+    setBackupErr('');
+    if (!encryptDownload) {
+      window.location.href = '/api/backup/download';
+      return;
+    }
+    if (downloadPassphrase.length < 4) {
+      setBackupErr('Encryption passphrase must be at least 4 characters.');
+      return;
+    }
+    setDownloadingBackup(true);
+    try {
+      await api.downloadEncryptedBackup(downloadPassphrase);
+      setBackupMsg('Encrypted backup downloaded (.tar.gz.enc).');
+    } catch (err) {
+      setBackupErr(err instanceof Error ? err.message : 'Could not download encrypted backup.');
+    } finally {
+      setDownloadingBackup(false);
+    }
+  };
+
   const handleRestoreFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setBackupMsg('');
     setBackupErr('');
     const file = e.target.files?.[0] || null;
     setSelectedBackupFile(file);
+    setRestorePassphrase('');
+    setNeedsRestorePassphrase(Boolean(file && file.name.toLowerCase().endsWith('.enc')));
   };
 
   const handleRestoreBackup = async () => {
     if (!selectedBackupFile) return;
+    if (needsRestorePassphrase && !restorePassphrase) {
+      setBackupErr('Please enter the encryption passphrase for this backup.');
+      return;
+    }
     const confirmed = window.confirm(
       `Restore journal from "${selectedBackupFile.name}"?\n\nThis will replace your current entries, settings, and photos with the contents of the backup. A safety copy of your current data will be saved automatically on the server.`
     );
@@ -169,8 +203,13 @@ export function SettingsPage() {
     setBackupErr('');
     setRestoring(true);
     try {
-      const result = await api.restoreBackup(selectedBackupFile);
+      const result = await api.restoreBackup(
+        selectedBackupFile,
+        restorePassphrase || undefined
+      );
       setSelectedBackupFile(null);
+      setRestorePassphrase('');
+      setNeedsRestorePassphrase(false);
       if (restoreInputRef.current) {
         restoreInputRef.current.value = '';
       }
@@ -184,6 +223,9 @@ export function SettingsPage() {
       await refresh();
       await Promise.all([loadBackupInfo(), loadPasskeys()]);
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'PASSPHRASE_REQUIRED') {
+        setNeedsRestorePassphrase(true);
+      }
       setBackupErr(
         err instanceof Error ? err.message : 'Could not restore backup. Your current data was preserved.'
       );
@@ -227,33 +269,72 @@ export function SettingsPage() {
 
         {/* Download Backup */}
         <div
-          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border px-4 py-3"
+          className="rounded-lg border px-4 py-3 space-y-3"
           style={{
             backgroundColor: 'var(--bg-subtle)',
             borderColor: 'var(--border)',
           }}
         >
-          <div>
-            <div className="text-sm font-medium">Download Full Backup</div>
-            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              {backupInfo
-                ? `${backupInfo.entryCount} entr${backupInfo.entryCount === 1 ? 'y' : 'ies'} · ${
-                    backupInfo.photoCount
-                  } photo${backupInfo.photoCount === 1 ? '' : 's'} · ~${formatBytes(
-                    backupInfo.totalEstimatedBytes
-                  )}`
-                : 'Includes all entries, prompts, settings, and photos.'}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-medium">Download Full Backup</div>
+              <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {backupInfo
+                  ? `${backupInfo.entryCount} entr${backupInfo.entryCount === 1 ? 'y' : 'ies'} · ${
+                      backupInfo.photoCount
+                    } photo${backupInfo.photoCount === 1 ? '' : 's'} · ~${formatBytes(
+                      backupInfo.totalEstimatedBytes
+                    )}`
+                  : 'Includes all entries, prompts, settings, and photos.'}
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={handleDownloadBackup}
+              disabled={downloadingBackup}
+              className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-stone-950 transition hover:opacity-90 disabled:opacity-50"
+              style={{ backgroundColor: 'var(--accent)' }}
+            >
+              {downloadingBackup ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              {downloadingBackup
+                ? 'Encrypting…'
+                : encryptDownload
+                ? 'Download Encrypted'
+                : 'Download Backup'}
+            </button>
           </div>
-          <a
-            href="/api/backup/download"
-            download
-            className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-stone-950 transition hover:opacity-90"
-            style={{ backgroundColor: 'var(--accent)' }}
-          >
-            <Download className="h-4 w-4" />
-            Download Backup
-          </a>
+
+          <label className="flex items-center gap-2 text-xs cursor-pointer" style={{ color: 'var(--text-muted)' }}>
+            <input
+              type="checkbox"
+              checked={encryptDownload}
+              onChange={(e) => {
+                setEncryptDownload(e.target.checked);
+                setBackupErr('');
+              }}
+              className="h-3.5 w-3.5 accent-amber-500"
+            />
+            <span>Encrypt download with passphrase (AES-256-GCM)</span>
+          </label>
+
+          {encryptDownload && (
+            <input
+              type="password"
+              value={downloadPassphrase}
+              onChange={(e) => setDownloadPassphrase(e.target.value)}
+              placeholder="Backup encryption passphrase (4+ characters)"
+              className="w-full max-w-sm rounded-lg border px-3 py-2 text-sm focus:outline-none"
+              style={{
+                backgroundColor: 'var(--bg-elevated)',
+                borderColor: 'var(--border)',
+                color: 'var(--text)',
+              }}
+            />
+          )}
         </div>
 
         {/* Restore from Backup */}
@@ -269,8 +350,8 @@ export function SettingsPage() {
             <div className="mt-0.5 flex items-start gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
               <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" style={{ color: 'var(--accent)' }} />
               <span>
-                Replaces your current journal with the selected backup. A timestamped safety copy
-                of your current data is kept automatically on the server before swapping.
+                Replaces your current journal with the selected backup (.tar.gz, .tar.gz.enc, or
+                midline.db). A timestamped safety copy of your current data is kept automatically.
               </span>
             </div>
           </div>
@@ -279,7 +360,7 @@ export function SettingsPage() {
             <input
               ref={restoreInputRef}
               type="file"
-              accept=".tar.gz,.tgz,.gz,.db,application/gzip,application/x-gzip"
+              accept=".tar.gz,.tar.gz.enc,.enc,.tgz,.gz,.db,application/gzip,application/x-gzip"
               onChange={handleRestoreFileChange}
               disabled={restoring}
               className="block w-full text-xs file:mr-3 file:rounded-lg file:border file:border-transparent file:px-3 file:py-1.5 file:text-xs file:font-medium file:cursor-pointer"
@@ -308,6 +389,21 @@ export function SettingsPage() {
             </div>
           )}
 
+          {needsRestorePassphrase && selectedBackupFile && (
+            <input
+              type="password"
+              value={restorePassphrase}
+              onChange={(e) => setRestorePassphrase(e.target.value)}
+              placeholder="Enter backup encryption passphrase"
+              className="w-full max-w-sm rounded-lg border px-3 py-2 text-sm focus:outline-none"
+              style={{
+                backgroundColor: 'var(--bg-elevated)',
+                borderColor: 'var(--border)',
+                color: 'var(--text)',
+              }}
+            />
+          )}
+
           {backupMsg && (
             <div className="text-xs font-medium text-emerald-500">{backupMsg}</div>
           )}
@@ -318,6 +414,14 @@ export function SettingsPage() {
           )}
         </div>
       </section>
+
+      {/* Google Drive Cloud Sync (Encrypted) */}
+      <GoogleDriveSyncCard
+        onRestored={async () => {
+          await refresh();
+          await Promise.all([loadBackupInfo(), loadPasskeys()]);
+        }}
+      />
 
       {/* Passkeys (Phone Unlock) */}
       <section

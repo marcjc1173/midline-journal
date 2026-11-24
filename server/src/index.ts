@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { initDb, DATA_DIR, isDbRestoring } from './db.js';
 import { requireAuth } from './auth.js';
 import authRoutes from './routes/auth.js';
-import backupRoutes, { MAX_BACKUP_UPLOAD_MB } from './routes/backup.js';
+import backupRoutes, { MAX_BACKUP_UPLOAD_MB, startBackupScheduler } from './routes/backup.js';
 import entriesRoutes from './routes/entries.js';
 import photosRoutes, {
   MAX_PHOTOS_PER_ENTRY,
@@ -99,4 +99,5 @@ app.use(
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Midline Journal server running on http://0.0.0.0:${PORT}`);
   console.log(`Data directory: ${DATA_DIR}`);
+  startBackupScheduler();
 });

@@ -5,14 +5,25 @@ import {
 import type {
   AuthStatus,
   BackupInfo,
+  BackupSchedule,
   CalendarDayInfo,
   Entry,
+  GDriveBackupItem,
+  GDriveConfig,
   JournalStats,
   PasskeyItem,
   Photo,
   Prompt,
   RestoreResult,
 } from './types';
+
+export class ApiError extends Error {
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.code = code;
+  }
+}
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const isFormData = options.body instanceof FormData;
@@ -27,13 +38,15 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     let msg = `Request failed (${res.status})`;
+    let code: string | undefined;
     try {
-      const data = (await res.json()) as { error?: string };
+      const data = (await res.json()) as { error?: string; code?: string };
       if (data.error) msg = data.error;
+      if (data.code) code = data.code;
     } catch {
       // ignore
     }
-    throw new Error(msg);
+    throw new ApiError(msg, code);
   }
 
   return res.json() as Promise<T>;
@@ -211,12 +224,79 @@ export const api = {
 
   // Backup & Restore
   getBackupInfo: () => request<BackupInfo>('/api/backup/info'),
-  restoreBackup: (file: File) => {
+  downloadEncryptedBackup: async (passphrase: string) => {
+    const res = await fetch('/api/backup/download', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ passphrase }),
+    });
+    if (!res.ok) {
+      let msg = `Download failed (${res.status})`;
+      try {
+        const data = (await res.json()) as { error?: string };
+        if (data.error) msg = data.error;
+      } catch {
+        // ignore
+      }
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const filename =
+      res.headers.get('X-Backup-Filename') || 'midline-backup.tar.gz.enc';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  },
+  restoreBackup: (file: File, passphrase?: string) => {
     const formData = new FormData();
     formData.append('backup', file);
+    if (passphrase) {
+      formData.append('passphrase', passphrase);
+    }
     return request<RestoreResult>('/api/backup/restore', {
       method: 'POST',
       body: formData,
     });
   },
+
+  // Google Drive Cloud Sync
+  getGDriveConfig: () => request<GDriveConfig>('/api/backup/gdrive/config'),
+  saveGDriveConfig: (payload: {
+    clientId?: string;
+    clientSecret?: string;
+    folderName?: string;
+    encryptionPassphrase?: string;
+    schedule?: BackupSchedule;
+    retentionCount?: number;
+  }) =>
+    request<{ ok: boolean } & GDriveConfig>('/api/backup/gdrive/config', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  connectGDrive: () =>
+    request<{ authUrl: string }>('/api/backup/gdrive/connect', { method: 'POST' }),
+  disconnectGDrive: () =>
+    request<{ ok: boolean }>('/api/backup/gdrive/disconnect', { method: 'POST' }),
+  listGDriveBackups: () =>
+    request<{ backups: GDriveBackupItem[] }>('/api/backup/gdrive/backups'),
+  runGDriveBackupNow: () =>
+    request<{ ok: boolean; backup: { id: string; name: string; size: number; pruned: number } }>(
+      '/api/backup/gdrive/backup-now',
+      { method: 'POST' }
+    ),
+  restoreGDriveBackup: (fileId: string, passphrase?: string) =>
+    request<RestoreResult>(`/api/backup/gdrive/restore/${encodeURIComponent(fileId)}`, {
+      method: 'POST',
+      body: JSON.stringify(passphrase ? { passphrase } : {}),
+    }),
+  deleteGDriveBackup: (fileId: string) =>
+    request<{ ok: boolean }>(`/api/backup/gdrive/backups/${encodeURIComponent(fileId)}`, {
+      method: 'DELETE',
+    }),
 };
