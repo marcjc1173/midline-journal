@@ -38,6 +38,7 @@ Most journaling apps are either cloud subscriptions, generic blank pages, or fil
 - **Calendar View**: Monthly calendar where days with entries stand out visually with mood and photo indicators. Click any day to read or add entries.
 - **Mood, Energy, Search & Tags**: Plain-spoken 1-click mood check-in (*Good, Steady, Grateful, Stressed, Heavy, Low*), optional 1–5 energy level, full-text search, and tag filtering.
 - **Private Lock, Auto-Lock & Phone Passkeys**: Single-user password/PIN lock, **WebAuthn Passkey** support (Face ID, Touch ID, fingerprint), configurable **Auto-Lock** (on close or inactivity timeout), and **Draft Auto-Save** so you never lose what you're writing.
+- **Built-In Encrypted Backups & Google Drive Sync**: One-click full backup downloads (`.tar.gz` or AES-256-GCM encrypted `.tar.gz.enc`), live in-app restore from Settings or the first-run setup screen, and automatic scheduled encrypted cloud backups to **Google Drive** with retention pruning.
 - **Warm & Grounded Themes + PWA**: Switch between **Dark Charcoal** and **Warm Paper** modes, and install as an app on your phone or desktop.
 
 ---
@@ -52,54 +53,41 @@ docker compose up -d --build
 
 Then open `http://localhost:3001` (or `http://<your-server-ip>:3001`) to set your password/PIN and start writing.
 
-### Backups (Local & Google Drive via `rclone`)
-Everything—your SQLite database (`midline.db`) and all uploaded photos—lives inside `./data`. Back up that single folder and you have your entire journal.
+### Backups & Restore (Built Into the App)
+Everything—your SQLite database (`midline.db`) and all uploaded photos—lives inside `./data`, and Midline includes full **Backup & Restore** directly in **Settings** (no external scripts required):
 
-Midline also includes [`scripts/backup.sh`](./scripts/backup.sh), which takes a safe live SQLite snapshot (so the database is never copied mid-write) and syncs it along with your photos to **Google Drive** (or Dropbox, OneDrive, S3, Backblaze B2) using [`rclone`](https://rclone.org/):
+1. **Manual Download & Restore (with optional AES-256-GCM Encryption)**
+   - In **Settings → Backup & Restore**, click **Download Backup** to save a live, consistent snapshot (`.tar.gz`) containing your database and all photos.
+   - Check **Encrypt download with passphrase** to encrypt the archive with **AES-256-GCM** (`.tar.gz.enc`) before saving it anywhere (cloud drive, USB stick, etc.).
+   - To restore, upload any `.tar.gz`, `.tar.gz.enc`, or `midline.db` file in **Settings → Backup & Restore** — or click **Restore from Backup File** directly on the **first-run setup screen** when moving to a brand-new server. Midline verifies SQLite integrity before swapping, saves an automatic timestamped safety copy in `./data/.pre-restore-*`, and restores live without needing to stop the server.
 
-1. Install `rclone` (`sudo apt install rclone` or `brew install rclone`) and link Google Drive:
-   ```bash
-   rclone config
-   # Choose: n (New remote) → Name: gdrive → Storage: drive (Google Drive)
-   ```
-   *(Optional: wrap `gdrive` in an `rclone crypt` remote if you want end-to-end encrypted backups before upload.)*
-2. Run a backup anytime:
+2. **Google Drive Cloud Sync (Encrypted & Scheduled)**
+   - In **Settings → Google Drive Cloud Sync**, connect your Google Drive using the least-privilege `drive.file` scope (Midline can only access files and folders it creates itself).
+   - Expand the built-in **One-time Google Cloud setup guide** in Settings to copy your exact **Authorized Redirect URI**, paste your Google OAuth Client ID/Secret, and set a **Backup Encryption Passphrase**.
+   - Every cloud backup is encrypted with **AES-256-GCM** before leaving your server. Run **Back Up Now** anytime, enable **Daily** or **Weekly** automatic backups with configurable retention (keep last 3, 7, 14, or 30), and **Restore** or **Delete** cloud snapshots directly from Settings.
+   - *(Keep your backup encryption passphrase in a password manager — you'll need it to decrypt cloud backups if you ever restore onto a new machine.)*
+
+<details>
+<summary>Alternative: CLI Backup & Restore Scripts (<code>rclone</code> / <code>cron</code>)</summary>
+
+Midline also includes [`scripts/backup.sh`](./scripts/backup.sh) and [`scripts/restore.sh`](./scripts/restore.sh) if you prefer scripted backups via [`rclone`](https://rclone.org/) (Google Drive, Dropbox, OneDrive, S3, Backblaze B2):
+
+1. Install `rclone` (`sudo apt install rclone` or `brew install rclone`) and link your remote (`rclone config`).
+2. Run a backup anytime (or schedule via `cron`):
    ```bash
    RCLONE_REMOTE="gdrive:MidlineBackup" ./scripts/backup.sh
    ```
-3. Automate nightly backups with a `cron` job or `systemd` user timer:
+3. To restore via CLI, stop Midline first (`docker compose down` or `systemctl --user stop midline`), then run:
    ```bash
-   # Example crontab entry (2:00 AM daily):
-   0 2 * * * RCLONE_REMOTE="gdrive:MidlineBackup" /path/to/midline-journal/scripts/backup.sh
-   ```
-
-### Restoring from a Backup
-Midline includes [`scripts/restore.sh`](./scripts/restore.sh) to safely restore your database and photos from either `rclone` (Google Drive, etc.) or a local backup folder. It verifies SQLite integrity before swapping files, saves a timestamped safety copy of your current `./data` directory, and clears stale WAL files automatically.
-
-1. **Stop Midline first** (never overwrite a live SQLite database while the server is running):
-   ```bash
-   # Docker:
-   docker compose down
-   # Or systemd user service:
-   systemctl --user stop midline
-   ```
-2. **Run the restore script:**
-   ```bash
-   # From rclone / Google Drive:
+   # From rclone:
    RCLONE_REMOTE="gdrive:MidlineBackup" ./scripts/restore.sh
 
    # Or from a local backup folder:
    ./scripts/restore.sh --from /path/to/backup-folder
    ```
-3. **Start Midline again:**
-   ```bash
-   # Docker:
-   docker compose up -d
-   # Or systemd user service:
-   systemctl --user start midline
-   ```
+4. Start Midline again (`docker compose up -d` or `systemctl --user start midline`).
 
-*(Manual restore without the script: stop Midline, remove any `midline.db-wal` and `midline.db-shm` files in `./data`, copy your backed-up `midline.db` and `uploads/` folder into `./data`, then start Midline again. Missing thumbnails in `thumbs/` are handled automatically by falling back to the original photos.)*
+</details>
 
 ### Enabling Phone Passkeys (Face ID / Touch ID / Fingerprint)
 Browsers require **HTTPS + a hostname** to use Passkeys outside `localhost`. Two easy ways to enable HTTPS for your self-hosted instance:
