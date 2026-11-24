@@ -1,6 +1,6 @@
 services:
   midline:
-    build: .
+    image: ghcr.io/marcjc1173/midline-journal:latest
     container_name: midline-journal
     restart: unless-stopped
     ports:

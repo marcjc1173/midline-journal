@@ -45,13 +45,34 @@ Most journaling apps are either cloud subscriptions, generic blank pages, or fil
 
 ## Quick Start (Docker — Recommended)
 
+No `git` clone required—just download `docker-compose.yml` into a folder and start the container:
+
 ```bash
-git clone https://github.com/marcjc1173/midline-journal.git
-cd midline-journal
-docker compose up -d --build
+mkdir midline && cd midline
+curl -O https://raw.githubusercontent.com/marcjc1173/midline-journal/main/docker-compose.yml
+docker compose up -d
 ```
 
 Then open `http://localhost:3001` (or `http://<your-server-ip>:3001`) to set your password/PIN and start writing.
+
+### Updating to the Latest Version
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+<details>
+<summary>Alternative: Build the Docker image from source</summary>
+
+```bash
+git clone https://github.com/marcjc1173/midline-journal.git
+cd midline-journal
+docker build -t ghcr.io/marcjc1173/midline-journal:latest .
+docker compose up -d
+```
+
+</details>
 
 ### Backups & Restore (Built Into the App)
 Everything—your SQLite database (`midline.db`) and all uploaded photos—lives inside `./data`, and Midline includes full **Backup & Restore** directly in **Settings** (no external scripts required):
