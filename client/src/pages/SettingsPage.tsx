@@ -1,7 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   Check,
+  Download,
   Fingerprint,
+  HardDrive,
   KeyRound,
   Loader2,
   Lock,
@@ -9,11 +12,19 @@ import {
   Smartphone,
   Sun,
   Trash2,
+  Upload,
 } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import type { PasskeyItem } from '../types';
+import type { BackupInfo, PasskeyItem } from '../types';
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
 
 const AUTO_LOCK_OPTIONS = [
   { minutes: 0, label: 'Never' },
@@ -46,6 +57,13 @@ export function SettingsPage() {
   const [pwMsg, setPwMsg] = useState('');
   const [pwErr, setPwErr] = useState('');
 
+  const [backupInfo, setBackupInfo] = useState<BackupInfo | null>(null);
+  const [selectedBackupFile, setSelectedBackupFile] = useState<File | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [backupMsg, setBackupMsg] = useState('');
+  const [backupErr, setBackupErr] = useState('');
+  const restoreInputRef = useRef<HTMLInputElement | null>(null);
+
   const loadPasskeys = useCallback(async () => {
     try {
       const res = await api.listPasskeys();
@@ -55,9 +73,19 @@ export function SettingsPage() {
     }
   }, []);
 
+  const loadBackupInfo = useCallback(async () => {
+    try {
+      const info = await api.getBackupInfo();
+      setBackupInfo(info);
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
   useEffect(() => {
     loadPasskeys();
-  }, [loadPasskeys]);
+    loadBackupInfo();
+  }, [loadPasskeys, loadBackupInfo]);
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,14 +151,173 @@ export function SettingsPage() {
     }
   };
 
+  const handleRestoreFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setBackupMsg('');
+    setBackupErr('');
+    const file = e.target.files?.[0] || null;
+    setSelectedBackupFile(file);
+  };
+
+  const handleRestoreBackup = async () => {
+    if (!selectedBackupFile) return;
+    const confirmed = window.confirm(
+      `Restore journal from "${selectedBackupFile.name}"?\n\nThis will replace your current entries, settings, and photos with the contents of the backup. A safety copy of your current data will be saved automatically on the server.`
+    );
+    if (!confirmed) return;
+
+    setBackupMsg('');
+    setBackupErr('');
+    setRestoring(true);
+    try {
+      const result = await api.restoreBackup(selectedBackupFile);
+      setSelectedBackupFile(null);
+      if (restoreInputRef.current) {
+        restoreInputRef.current.value = '';
+      }
+      const photoPart =
+        result.photosRestored !== null
+          ? ` and ${result.photosRestored} photo${result.photosRestored === 1 ? '' : 's'}`
+          : '';
+      setBackupMsg(
+        `Restore complete: ${result.entryCount} entr${result.entryCount === 1 ? 'y' : 'ies'}${photoPart} restored.`
+      );
+      await refresh();
+      await Promise.all([loadBackupInfo(), loadPasskeys()]);
+    } catch (err) {
+      setBackupErr(
+        err instanceof Error ? err.message : 'Could not restore backup. Your current data was preserved.'
+      );
+    } finally {
+      setRestoring(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
         <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-          Manage phone passkeys, privacy, and appearance.
+          Manage phone passkeys, privacy, backups, and appearance.
         </p>
       </header>
+
+      {/* Backup & Restore */}
+      <section
+        className="rounded-xl border p-5 space-y-4"
+        style={{
+          backgroundColor: 'var(--bg-elevated)',
+          borderColor: 'var(--border)',
+        }}
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className="rounded-lg p-2"
+            style={{ backgroundColor: 'var(--accent-soft)', color: 'var(--accent)' }}
+          >
+            <HardDrive className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-base font-semibold">Backup &amp; Restore</h2>
+            <p className="mt-0.5 text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+              Download a full backup archive containing your journal database and photos, or
+              restore from a previous Midline backup (.tar.gz or midline.db).
+            </p>
+          </div>
+        </div>
+
+        {/* Download Backup */}
+        <div
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-lg border px-4 py-3"
+          style={{
+            backgroundColor: 'var(--bg-subtle)',
+            borderColor: 'var(--border)',
+          }}
+        >
+          <div>
+            <div className="text-sm font-medium">Download Full Backup</div>
+            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              {backupInfo
+                ? `${backupInfo.entryCount} entr${backupInfo.entryCount === 1 ? 'y' : 'ies'} · ${
+                    backupInfo.photoCount
+                  } photo${backupInfo.photoCount === 1 ? '' : 's'} · ~${formatBytes(
+                    backupInfo.totalEstimatedBytes
+                  )}`
+                : 'Includes all entries, prompts, settings, and photos.'}
+            </div>
+          </div>
+          <a
+            href="/api/backup/download"
+            download
+            className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-stone-950 transition hover:opacity-90"
+            style={{ backgroundColor: 'var(--accent)' }}
+          >
+            <Download className="h-4 w-4" />
+            Download Backup
+          </a>
+        </div>
+
+        {/* Restore from Backup */}
+        <div
+          className="rounded-lg border px-4 py-3.5 space-y-3"
+          style={{
+            backgroundColor: 'var(--bg-subtle)',
+            borderColor: 'var(--border)',
+          }}
+        >
+          <div>
+            <div className="text-sm font-medium">Restore from Backup</div>
+            <div className="mt-0.5 flex items-start gap-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+              <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" style={{ color: 'var(--accent)' }} />
+              <span>
+                Replaces your current journal with the selected backup. A timestamped safety copy
+                of your current data is kept automatically on the server before swapping.
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+            <input
+              ref={restoreInputRef}
+              type="file"
+              accept=".tar.gz,.tgz,.gz,.db,application/gzip,application/x-gzip"
+              onChange={handleRestoreFileChange}
+              disabled={restoring}
+              className="block w-full text-xs file:mr-3 file:rounded-lg file:border file:border-transparent file:px-3 file:py-1.5 file:text-xs file:font-medium file:cursor-pointer"
+              style={{ color: 'var(--text-muted)' }}
+            />
+            <button
+              type="button"
+              onClick={handleRestoreBackup}
+              disabled={!selectedBackupFile || restoring}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition disabled:opacity-40"
+              style={{ borderColor: 'var(--border)' }}
+            >
+              {restoring ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4" />
+              )}
+              {restoring ? 'Restoring…' : 'Restore Backup'}
+            </button>
+          </div>
+
+          {selectedBackupFile && !restoring && (
+            <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Selected: <span style={{ color: 'var(--text)' }}>{selectedBackupFile.name}</span> (
+              {formatBytes(selectedBackupFile.size)})
+            </div>
+          )}
+
+          {backupMsg && (
+            <div className="text-xs font-medium text-emerald-500">{backupMsg}</div>
+          )}
+          {backupErr && (
+            <div className="text-xs font-medium" style={{ color: 'var(--danger)' }}>
+              {backupErr}
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* Passkeys (Phone Unlock) */}
       <section

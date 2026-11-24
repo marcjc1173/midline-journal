@@ -72,6 +72,22 @@ export interface JournalStats {
   streak: number;
 }
 
+export interface BackupInfo {
+  entryCount: number;
+  photoCount: number;
+  dbSizeBytes: number;
+  uploadsSizeBytes: number;
+  totalEstimatedBytes: number;
+}
+
+export interface RestoreResult {
+  ok: boolean;
+  entryCount: number;
+  photoCount: number;
+  photosRestored: number | null;
+  requiresUnlock: boolean;
+}
+
 export const MOODS = [
   { id: 'good', label: 'Good', color: '#4f9d69' },
   { id: 'steady', label: 'Steady', color: '#6b9ac4' },

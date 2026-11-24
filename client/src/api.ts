@@ -4,12 +4,14 @@ import {
 } from '@simplewebauthn/browser';
 import type {
   AuthStatus,
+  BackupInfo,
   CalendarDayInfo,
   Entry,
   JournalStats,
   PasskeyItem,
   Photo,
   Prompt,
+  RestoreResult,
 } from './types';
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
@@ -206,4 +208,15 @@ export const api = {
     }),
   deletePrompt: (id: number) =>
     request<{ ok: boolean }>(`/api/prompts/${id}`, { method: 'DELETE' }),
+
+  // Backup & Restore
+  getBackupInfo: () => request<BackupInfo>('/api/backup/info'),
+  restoreBackup: (file: File) => {
+    const formData = new FormData();
+    formData.append('backup', file);
+    return request<RestoreResult>('/api/backup/restore', {
+      method: 'POST',
+      body: formData,
+    });
+  },
 };

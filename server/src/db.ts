@@ -12,7 +12,7 @@ fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 fs.mkdirSync(THUMBS_DIR, { recursive: true });
 
 const LEGACY_DB_PATH = path.join(DATA_DIR, 'meridian.db');
-const DB_PATH = path.join(DATA_DIR, 'midline.db');
+export const DB_PATH = path.join(DATA_DIR, 'midline.db');
 if (!fs.existsSync(DB_PATH) && fs.existsSync(LEGACY_DB_PATH)) {
   fs.renameSync(LEGACY_DB_PATH, DB_PATH);
   for (const ext of ['-wal', '-shm']) {
@@ -21,10 +21,44 @@ if (!fs.existsSync(DB_PATH) && fs.existsSync(LEGACY_DB_PATH)) {
     }
   }
 }
-export const db = new Database(DB_PATH);
 
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+function openDatabase(): Database.Database {
+  const instance = new Database(DB_PATH);
+  instance.pragma('journal_mode = WAL');
+  instance.pragma('foreign_keys = ON');
+  return instance;
+}
+
+export let db: Database.Database = openDatabase();
+
+let restoring = false;
+
+export function isDbRestoring(): boolean {
+  return restoring;
+}
+
+export function setDbRestoring(value: boolean): void {
+  restoring = value;
+}
+
+export function closeDb(): void {
+  if (db.open) {
+    try {
+      db.pragma('wal_checkpoint(TRUNCATE)');
+    } catch {
+      // ignore checkpoint errors if DB is already closing or read-only
+    }
+    db.close();
+  }
+}
+
+export function reopenDb(): Database.Database {
+  if (db.open) {
+    db.close();
+  }
+  db = openDatabase();
+  return db;
+}
 
 export function initDb(): void {
   db.exec(`

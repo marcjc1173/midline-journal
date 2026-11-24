@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Fingerprint, KeyRound, Loader2, ShieldCheck } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Fingerprint, KeyRound, Loader2, ShieldCheck, Upload } from 'lucide-react';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 
@@ -12,7 +12,10 @@ export function AuthPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [passkeyLoading, setPasskeyLoading] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState('');
   const [error, setError] = useState('');
+  const restoreInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +66,32 @@ export function AuthPage() {
     }
   };
 
+  const handleFirstRunRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError('');
+    setRestoreMsg('');
+    setRestoring(true);
+    try {
+      const result = await api.restoreBackup(file);
+      const photoPart =
+        result.photosRestored !== null
+          ? ` and ${result.photosRestored} photo${result.photosRestored === 1 ? '' : 's'}`
+          : '';
+      setRestoreMsg(
+        `Restored ${result.entryCount} entr${result.entryCount === 1 ? 'y' : 'ies'}${photoPart}. Unlock with your backup's password or passkey.`
+      );
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not restore backup file.');
+    } finally {
+      setRestoring(false);
+      if (restoreInputRef.current) {
+        restoreInputRef.current.value = '';
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-12">
       <div
@@ -82,7 +111,13 @@ export function AuthPage() {
           </p>
         </div>
 
-        {/* Passkey unlock button if registered */}
+          {restoreMsg && (
+            <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2.5 text-xs font-medium text-emerald-500">
+              {restoreMsg}
+            </div>
+          )}
+
+          {/* Passkey unlock button if registered */}
         {!isSetup && status?.hasPasskeys && (
           <div className="mb-6">
             <button
@@ -213,13 +248,51 @@ export function AuthPage() {
         </form>
 
         {isSetup && (
-          <p
-            className="mt-5 text-center text-xs leading-relaxed"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            You can add a phone Passkey (Face ID / Touch ID / Fingerprint) in Settings right
-            after signing in.
-          </p>
+          <div className="mt-5 space-y-4">
+            <div className="relative flex items-center">
+              <div className="flex-1 border-t" style={{ borderColor: 'var(--border)' }} />
+              <span
+                className="px-3 text-xs uppercase tracking-wider"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                or restore existing journal
+              </span>
+              <div className="flex-1 border-t" style={{ borderColor: 'var(--border)' }} />
+            </div>
+
+            <input
+              ref={restoreInputRef}
+              type="file"
+              accept=".tar.gz,.tgz,.gz,.db,application/gzip,application/x-gzip"
+              onChange={handleFirstRunRestore}
+              className="hidden"
+            />
+            <button
+              type="button"
+              disabled={restoring}
+              onClick={() => restoreInputRef.current?.click()}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition hover:opacity-90 disabled:opacity-50"
+              style={{
+                borderColor: 'var(--border)',
+                backgroundColor: 'var(--bg-subtle)',
+              }}
+            >
+              {restoring ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4" />
+              )}
+              {restoring ? 'Restoring Backup…' : 'Restore from Backup File'}
+            </button>
+
+            <p
+              className="text-center text-xs leading-relaxed"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              You can add a phone Passkey (Face ID / Touch ID / Fingerprint) in Settings right
+              after signing in.
+            </p>
+          </div>
         )}
       </div>
     </div>

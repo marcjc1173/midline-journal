@@ -5,9 +5,10 @@ import multer from 'multer';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { initDb, DATA_DIR } from './db.js';
+import { initDb, DATA_DIR, isDbRestoring } from './db.js';
 import { requireAuth } from './auth.js';
 import authRoutes from './routes/auth.js';
+import backupRoutes, { MAX_BACKUP_UPLOAD_MB } from './routes/backup.js';
 import entriesRoutes from './routes/entries.js';
 import photosRoutes, {
   MAX_PHOTOS_PER_ENTRY,
@@ -30,8 +31,20 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, app: 'midline-journal' });
 });
 
+// Reject API traffic briefly while a live database restore is swapping files
+app.use('/api', (_req, res, next) => {
+  if (isDbRestoring()) {
+    res.status(503).json({ error: 'A restore is currently in progress. Please wait a moment.' });
+    return;
+  }
+  next();
+});
+
 // Auth routes (public + partially protected internally)
 app.use('/api/auth', authRoutes);
+
+// Backup & restore routes (auth enforced per-route to allow first-run restore)
+app.use('/api/backup', backupRoutes);
 
 // Protected API routes
 app.use('/api/entries', requireAuth, entriesRoutes);
@@ -70,8 +83,11 @@ app.use(
         return;
       }
       if (err.code === 'LIMIT_FILE_SIZE') {
+        const isBackup = _req.originalUrl.startsWith('/api/backup');
         res.status(400).json({
-          error: `Each photo must be ${MAX_PHOTO_SIZE_MB} MB or smaller.`,
+          error: isBackup
+            ? `Backup file must be ${MAX_BACKUP_UPLOAD_MB} MB or smaller.`
+            : `Each photo must be ${MAX_PHOTO_SIZE_MB} MB or smaller.`,
         });
         return;
       }
