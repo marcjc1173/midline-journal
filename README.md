@@ -39,6 +39,7 @@ Most journaling apps are either cloud subscriptions, generic blank pages, or fil
 - **Mood, Energy, Search & Tags**: Plain-spoken 1-click mood check-in (*Good, Steady, Grateful, Stressed, Heavy, Low*), optional 1–5 energy level, full-text search, and tag filtering.
 - **Private Lock, Auto-Lock & Phone Passkeys**: Single-user password/PIN lock, **WebAuthn Passkey** support (Face ID, Touch ID, fingerprint), configurable **Auto-Lock** (on close or inactivity timeout), and **Draft Auto-Save** so you never lose what you're writing.
 - **Built-In Encrypted Backups & Google Drive Sync**: One-click full backup downloads (`.tar.gz` or AES-256-GCM encrypted `.tar.gz.enc`), live in-app restore from Settings or the first-run setup screen, and automatic scheduled encrypted cloud backups to **Google Drive** with retention pruning.
+- **Journal Export & Import (Clearful, Plain Text & Book PDF)**: Export your journal as a printable, book-styled **PDF** (with cover page, monthly chapters, table of contents, warm paper or print-white themes, prompts, mood/tags, and embedded photos) or clean **plain text (`.txt`)**, and import past entries from **Clearful**, Day One, or any dated `.txt`, `.md`, or `.pdf` journal export with live preview and duplicate detection.
 - **Warm & Grounded Themes + PWA**: Switch between **Dark Charcoal** and **Warm Paper** modes, and install as an app on your phone or desktop.
 
 ---

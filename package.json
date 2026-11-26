@@ -1,6 +1,6 @@
 {
   "name": "midline-journal",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Midline — A private, self-hosted daily journal designed for men navigating midlife (45–60).",
   "scripts": {
