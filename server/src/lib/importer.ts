@@ -103,7 +103,7 @@ function isValidYmd(y: number, m: number, d: number): boolean {
 }
 
 function parseTimePart(raw: string): string | null {
-  const m = raw.match(/\b(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm|a\.m\.|p\.m\.)?\b/i);
+  const m = raw.match(/(?:^|[\s,T@|•·—–-])(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm|a\.m\.|p\.m\.)?\b/i);
   if (!m) return null;
   let hour = Number(m[1]);
   const minute = Number(m[2]);
@@ -132,6 +132,12 @@ function looksLikeDateRange(rest: string): boolean {
   );
 }
 
+function isSecondaryTimestampLine(line: string): boolean {
+  return /^(?:date\s+updated|updated(?:\s+at)?|last\s+modified|modified(?:\s+at)?)\s*:/i.test(
+    line.trim()
+  );
+}
+
 /**
  * Attempts to parse a line as an entry date header.
  * Supports Clearful, Midline, Day One, Markdown headings, and common US/ISO/EU date formats.
@@ -140,11 +146,15 @@ function parseDateHeaderLine(rawLine: string): ParsedDateHeader | null {
   let line = rawLine.trim();
   if (!line || line.length > 140) return null;
 
-  // Strip leading markdown heading hashes, bold/italic markers, or "Date:" prefix
+  // Never treat secondary timestamps (like Clearful's "Date Updated: ...") as a new entry
+  if (isSecondaryTimestampLine(line)) return null;
+
+  // Strip leading markdown heading hashes, bold/italic markers, or date prefixes
   line = line.replace(/^#{1,4}\s*/, '').replace(/^\*{1,2}(.+?)\*{1,2}$/, '$1').trim();
-  const hadDatePrefix = /^date\s*:\s*/i.test(line);
+  const datePrefixRegex = /^(?:date\s+created|entry\s+date|created(?:\s+at)?|written(?:\s+on)?|date)\s*:\s*/i;
+  const hadDatePrefix = datePrefixRegex.test(line);
   if (hadDatePrefix) {
-    line = line.replace(/^date\s*:\s*/i, '').trim();
+    line = line.replace(datePrefixRegex, '').trim();
   }
 
   // Strip optional leading weekday name: "Thursday, " or "Thu "
@@ -232,7 +242,7 @@ function parseDateHeaderLine(rawLine: string): ParsedDateHeader | null {
 function stripTimePrefix(rest: string): string {
   return rest
     .replace(
-      /^[\s,|•·—–@-]*(?:at\s+)?\d{1,2}:\d{2}(?::\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)?/i,
+      /^[\s,T|•·—–@-]*(?:at\s+)?\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?\s*(?:am|pm|a\.m\.|p\.m\.)?(?:\s*(?:Z|[+-]\d{2}:?\d{2}|[A-Z]{2,5}))?/i,
       ''
     )
     .replace(/^[\s,|•·—–-]+/, '')
@@ -339,9 +349,14 @@ export function parseJournalImportText(
   }
 
   let detectedFormat = sourceType === 'pdf' ? 'PDF Journal Export' : 'Plain Text Journal';
+  const isClearful =
+    /^date\s+created\s*:/im.test(rawText) ||
+    /title\s*\/\s*prompt\s*:/i.test(rawText) ||
+    /clearful/i.test(rawText);
+
   if (/exported from midline on /i.test(rawText)) {
     detectedFormat = 'Midline Plain Text Export';
-  } else if (/title\s*\/\s*prompt\s*:/i.test(rawText) || /clearful/i.test(rawText)) {
+  } else if (isClearful) {
     detectedFormat =
       sourceType === 'pdf' ? 'Clearful PDF Export' : 'Clearful Plain Text Export';
   }
@@ -394,8 +409,8 @@ export function parseJournalImportText(
         if (isNoiseLine(trimmed)) continue;
 
         if (inHeaderMeta) {
-          if (!trimmed || isSeparatorLine(trimmed)) {
-            // Separator or blank line right after header metadata
+          if (!trimmed || isSeparatorLine(trimmed) || isSecondaryTimestampLine(trimmed)) {
+            // Separator, blank line, or "Date Updated: ..." right after header metadata
             continue;
           }
 
@@ -471,9 +486,28 @@ export function parseJournalImportText(
         bodyLines.push(rawLine);
       }
 
-      const content = bodyLines.join('\n').trim();
+      let content = bodyLines.join('\n').trim();
       if (!content && !title && !promptText) {
         continue;
+      }
+
+      // In Clearful exports, the first standalone line followed by a blank line and body
+      // is either the journal prompt (ends with '?') or the entry title.
+      if (isClearful && !title && !promptText && content) {
+        const blocks = content.split(/\n\s*\n/);
+        if (blocks.length >= 2) {
+          const firstBlock = blocks[0].trim();
+          const restContent = blocks.slice(1).join('\n\n').trim();
+          if (restContent && !firstBlock.includes('\n')) {
+            if (firstBlock.endsWith('?') && firstBlock.length <= 260) {
+              promptText = firstBlock;
+              content = restContent;
+            } else if (firstBlock.length <= 100) {
+              title = firstBlock;
+              content = restContent;
+            }
+          }
+        }
       }
 
       entries.push({
