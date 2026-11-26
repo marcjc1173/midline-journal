@@ -15,6 +15,7 @@ import photosRoutes, {
   MAX_PHOTO_SIZE_MB,
 } from './routes/photos.js';
 import promptsRoutes from './routes/prompts.js';
+import transferRoutes, { MAX_IMPORT_UPLOAD_MB } from './routes/transfer.js';
 
 initDb();
 
@@ -24,7 +25,7 @@ const PORT = Number(process.env.PORT) || 3001;
 app.set('trust proxy', 1);
 app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '15mb' }));
 
 // Health check
 app.get('/api/health', (_req, res) => {
@@ -50,6 +51,7 @@ app.use('/api/backup', backupRoutes);
 app.use('/api/entries', requireAuth, entriesRoutes);
 app.use('/api/photos', requireAuth, photosRoutes);
 app.use('/api/prompts', requireAuth, promptsRoutes);
+app.use('/api/transfer', requireAuth, transferRoutes);
 
 // Serve built React frontend in production
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -84,9 +86,12 @@ app.use(
       }
       if (err.code === 'LIMIT_FILE_SIZE') {
         const isBackup = _req.originalUrl.startsWith('/api/backup');
+        const isImport = _req.originalUrl.startsWith('/api/transfer');
         res.status(400).json({
           error: isBackup
             ? `Backup file must be ${MAX_BACKUP_UPLOAD_MB} MB or smaller.`
+            : isImport
+            ? `Import file must be ${MAX_IMPORT_UPLOAD_MB} MB or smaller.`
             : `Each photo must be ${MAX_PHOTO_SIZE_MB} MB or smaller.`,
         });
         return;

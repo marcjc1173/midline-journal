@@ -15,6 +15,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { ApiError, api } from '../api';
+import { ExportImportSection } from '../components/ExportImportSection';
 import { GoogleDriveSyncCard } from '../components/GoogleDriveSyncCard';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -239,9 +240,12 @@ export function SettingsPage() {
       <header>
         <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
         <p className="mt-1 text-sm" style={{ color: 'var(--text-muted)' }}>
-          Manage phone passkeys, privacy, backups, and appearance.
+          Export or import your journal, manage backups, passkeys, and appearance.
         </p>
       </header>
+
+      {/* Export & Import Journal */}
+      <ExportImportSection onImported={loadBackupInfo} />
 
       {/* Backup & Restore */}
       <section

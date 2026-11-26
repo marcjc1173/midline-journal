@@ -8,9 +8,13 @@ import type {
   BackupSchedule,
   CalendarDayInfo,
   Entry,
+  ExportOptions,
   GDriveBackupItem,
   GDriveConfig,
+  ImportCommitResult,
+  ImportPreviewResult,
   JournalStats,
+  ParsedImportEntry,
   PasskeyItem,
   Photo,
   Prompt,
@@ -298,5 +302,58 @@ export const api = {
   deleteGDriveBackup: (fileId: string) =>
     request<{ ok: boolean }>(`/api/backup/gdrive/backups/${encodeURIComponent(fileId)}`, {
       method: 'DELETE',
+    }),
+
+  // Export & Import
+  exportJournal: async (format: 'text' | 'pdf', options: ExportOptions = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(options)) {
+      if (v !== undefined && v !== '') {
+        qs.set(k, String(v));
+      }
+    }
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    const res = await fetch(`/api/transfer/export/${format}${suffix}`, {
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      let msg = `Export failed (${res.status})`;
+      try {
+        const data = (await res.json()) as { error?: string };
+        if (data.error) msg = data.error;
+      } catch {
+        // ignore
+      }
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const fallbackName =
+      format === 'pdf' ? 'midline-journal.pdf' : 'midline-journal.txt';
+    const filename = res.headers.get('X-Export-Filename') || fallbackName;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  },
+  previewImport: (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return request<ImportPreviewResult>('/api/transfer/import/preview', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+  commitImport: (payload: {
+    entries: ParsedImportEntry[];
+    skipDuplicates: boolean;
+    importTag: string;
+  }) =>
+    request<ImportCommitResult>('/api/transfer/import/commit', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
 };

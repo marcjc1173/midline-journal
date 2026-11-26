@@ -114,6 +114,45 @@ export interface GDriveBackupItem {
   encrypted: boolean;
 }
 
+export interface ExportOptions {
+  from?: string;
+  to?: string;
+  order?: 'asc' | 'desc';
+  title?: string;
+  subtitle?: string;
+  paperStyle?: 'warm' | 'white';
+  includePhotos?: boolean;
+  includeMetadata?: boolean;
+  includeToc?: boolean;
+}
+
+export interface ParsedImportEntry {
+  entry_date: string;
+  entry_time: string;
+  title: string;
+  content: string;
+  mood: string | null;
+  energy: number | null;
+  prompt_text: string | null;
+  tags: string[];
+  isDuplicate?: boolean;
+}
+
+export interface ImportPreviewResult {
+  detectedFormat: string;
+  totalParsed: number;
+  duplicateCount: number;
+  dateRange: { from: string; to: string } | null;
+  warnings: string[];
+  entries: ParsedImportEntry[];
+}
+
+export interface ImportCommitResult {
+  ok: boolean;
+  imported: number;
+  skipped: number;
+}
+
 export const MOODS = [
   { id: 'good', label: 'Good', color: '#4f9d69' },
   { id: 'steady', label: 'Steady', color: '#6b9ac4' },
